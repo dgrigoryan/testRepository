@@ -1,2 +1,2 @@
 <?
-phpinfo();
+die('Auto deploy test');
