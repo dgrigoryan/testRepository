@@ -1,2 +1,4 @@
 <?
 phpinfo();
+
+//test comment
