@@ -41,5 +41,6 @@
  */
 // While we don't have a domain address use IP alias.
 $sites['booker-marketing-git-test-prod.azurewebsites.net'] = 'gitqa';
+$sites['waws-prod-ch1-017.cloudapp.net'] = 'gitqa';
 $sites['booker-marketing-git-test-staging.azurewebsites.net'] = 'gitqa';
 $sites['booker-marketing-git-test-dev.azurewebsites.net'] = 'gitqa';
