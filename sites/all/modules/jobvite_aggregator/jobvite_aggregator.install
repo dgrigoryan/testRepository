@@ -1,0 +1,63 @@
+<?php
+
+/**
+ * Implements hook_enable().
+ */
+function jobvite_aggregator_enable() {
+    _jobvite_aggregator_update_content_type();
+    //$aliasPrefix = variable_get('jobvite_alias_pref', false);
+
+    //if(empty($aliasPrefix)) {
+    //    variable_set('jobvite_alias_pref', 'company/careers/job-listing');
+    //}
+}
+
+/**
+ * Implements hook_uninstall.
+ */
+function jobvite_aggregator_uninstall() {
+    // Module schema uninstall
+    drupal_uninstall_schema('jobvite_req_node');
+    // Module variables deletion
+    //variable_del('jobvite_alias_pref');
+    variable_del('jobvite_company_id');
+    variable_del('jobvite_api');
+    variable_del('jobvite_secret');
+}
+
+/**
+ * Implements hook_install.
+ */
+function jobvite_aggregator_install() {
+    drupal_install_schema('jobvite_req_node');
+}
+
+/**
+ * Implementation hook_schema()
+ */
+function jobvite_aggregator_schema(){
+    $schema['jobvite_req_node'] = array(
+        'description' => 'Template manager table of node relations',
+        'fields' => array(
+            'nid' => array(
+                'description' => 'Node Id',
+                'type' => 'int',
+                'size' => 'medium',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ),
+            'jvid' => array(
+                'description' => 'JobVite requisition id',
+                'type' => 'varchar',
+                'length' => '64',
+                'not null' => TRUE,
+            ),
+        ),
+        'unique keys' => array(
+            'nid' => array('nid'),
+            'jvid' => array('jvid'),
+        ),
+        'primary key' => array( 'nid' ),
+    );
+    return $schema;
+}

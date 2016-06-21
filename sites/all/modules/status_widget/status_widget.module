@@ -1,0 +1,541 @@
+<?php
+define('STATUS_WIDGET_HISTORY_TABLE', 'status_widget_history');
+/**
+ *    -----------------------------------------------
+ *            Booker System Status Module.
+ *    -----------------------------------------------
+ */
+
+
+/**
+ * Implements hook_menu().
+ */
+function status_widget_menu()
+{
+    $items['admin/config/system/status'] = array(
+        'title' => t('System Status History'),
+        'description' => t('Edit System Status History'),
+        'access arguments' => array('administer site configuration'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('system_status_form'),
+    );
+
+
+    $items['admin/status/get'] = array(
+        'page callback' => 'status_widget_get_status_by_date',
+        'page arguments' => array(3),
+        'access arguments' => array('administer site configuration'),
+        'type' => MENU_CALLBACK,
+    );
+
+    return $items;
+
+}
+
+function status_widget_get_status_by_date()
+{
+    $date = isset($_GET['date']) ? $_GET['date'] : false;
+
+    if ($date) {
+        $results = db_select('status_widget_history', 's')
+            ->fields('s')
+            ->condition('date', $date, '=')
+            ->execute()->fetchAssoc();
+
+        $results->data = json_decode($results->data);
+
+        die(json_encode($results));
+    }
+}
+
+/**
+ * Implements a system status form.
+ */
+function system_status_form()
+{
+    $form['system_status']['status_date'] = array(
+        '#title' => t('Select date'),
+        '#name' => 'date',
+        '#type' => 'date_popup',
+        '#date_timezone' => false,
+        '#date_format' => 'Y-m-d',
+        '#required' => true,
+    );
+
+    $form['system_status']['html'] = array(
+        '#markup' => '<input ' . drupal_attributes(array('type' => 'button', 'value' => 'Make all OK', 'class' => "form-submit make-all-the-same", 'data-status' => 0)) .'/><input ' . drupal_attributes(array('type' => 'button', 'value' => 'Make all Issue', 'class' => "form-submit make-all-the-same", 'data-status' => 1)) .'/><input ' . drupal_attributes(array('type' => 'button', 'value' => 'Make all Offline', 'class' => "form-submit make-all-the-same", 'data-status' => 2)) .'/>',
+    );
+
+    $form['system_status']['statuses[1]'] = array(
+        '#type' => 'radios',
+        '#title' => t('System Access'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[2]'] = array(
+        '#type' => 'radios',
+        '#title' => t('Reservationist Booking'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[3]'] = array(
+        '#type' => 'radios',
+        '#title' => t('Online Booking'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[4]'] = array(
+        '#type' => 'radios',
+        '#title' => t('Credit Card Processing'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[5]'] = array(
+        '#type' => 'radios',
+        '#title' => t('Notifications'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[6]'] = array(
+        '#type' => 'radios',
+        '#title' => t('Reporting'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[7]'] = array(
+        '#type' => 'radios',
+        '#title' => t('APIs'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+    $form['system_status']['statuses[8]'] = array(
+        '#type' => 'radios',
+        '#title' => t('Support Phones'),
+        '#default_value' => '',
+        '#options' => array(t('Ok'), t('Issue'), t('Offline')),
+    );
+	$form['#submit'][] = '_status_widget_admin_form_submit';
+
+	return system_settings_form($form);
+}
+
+/**
+ *    Implements hook_block_help(). Provides help on the module through
+ *    a help icon on modules section of drupal.
+ */
+function status_widget_help($path, $arg)
+{
+    if ($path == 'admin/help#status_widget') {
+        return t('This module helps Booker admins manage system status notifications through a user-friendly form.');
+    }
+}
+
+function _status_widget_admin_form_submit() {
+    echo '<pre>' . print_r($_POST, true) . '</pre>';
+
+    $statusDate = isset($_POST['status_date']['date']) ? $_POST['status_date']['date'] : '';
+    $statuses = isset($_POST['statuses']) ? $_POST['statuses'] : '';
+
+    $statuses = json_encode(array_map(function($n) { return intval($n);}, $statuses));
+
+    if(validateDate($statusDate, 'Y-m-d') && $statuses) {
+        db_merge(STATUS_WIDGET_HISTORY_TABLE)
+            ->key(array('date' => $statusDate))
+            ->fields(
+                array(
+                    'data' => $statuses,
+                    'date' => $statusDate
+                )
+            )
+            ->execute();
+        drupal_set_message('The data have been successfully saved!');
+    } else {
+        drupal_set_message('An error occurred!');
+    }
+
+}
+
+function validateDate($date, $format)
+{
+    $d = DateTime::createFromFormat($format, $date);
+    return $d && $d->format($format) === $date;
+}
+
+/**
+ *    Implements hook_block_info().
+ */
+function status_widget_block_info()
+{
+    $blocks['status_widget'] = array(
+        'info' => t('Booker System Status Widget'),
+    );
+
+    return $blocks;
+}
+
+/**
+ *    Implements hook_init().
+ */
+function status_widget_init()
+{
+    if (arg(0) == 'admin') {
+        $path = drupal_get_path('module', 'status_widget');
+        drupal_add_js($path . '/status.js');
+        //drupal_add_css($path . '/mymodule.css');
+    }
+}
+
+/**
+ *    Implements hook_block_configure().
+ *    This module allows us to enter system updates through a form.
+ *    It contains a set of radio buttons and textfields accessible to
+ *    admins from the config panel.
+ */
+function status_widget_block_configure($delta = '', $edit = array())
+{
+    $form = array();
+    $testArray = array(0 => 'OK', 1 => 'Issue', 2 => 'Offline');
+
+    if ($delta == 'status_widget') {
+        $form['status_widget'] = array(
+            '#type' => 'fieldset',
+            '#title' => t('System Status Options'),
+        );
+
+        $form['status_widget']['status_widget_radio1'] = array(
+            '#type' => 'radios',
+            '#title' => t('System Access'),
+            '#default_value' => variable_get('status_widget_radio1', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio2'] = array(
+            '#type' => 'radios',
+            '#title' => t('Reservationist Booking'),
+            '#default_value' => variable_get('status_widget_radio2', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio3'] = array(
+            '#type' => 'radios',
+            '#title' => t('Online Booking'),
+            '#default_value' => variable_get('status_widget_radio3', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio4'] = array(
+            '#type' => 'radios',
+            '#title' => t('Credit Card Processing'),
+            '#default_value' => variable_get('status_widget_radio4', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio5'] = array(
+            '#type' => 'radios',
+            '#title' => t('Notifications'),
+            '#default_value' => variable_get('status_widget_radio5', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio6'] = array(
+            '#type' => 'radios',
+            '#title' => t('Reporting'),
+            '#default_value' => variable_get('status_widget_radio6', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio7'] = array(
+            '#type' => 'radios',
+            '#title' => t('APIs'),
+            '#default_value' => variable_get('status_widget_radio7', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_radio8'] = array(
+            '#type' => 'radios',
+            '#title' => t('Support Phones'),
+            '#default_value' => variable_get('status_widget_radio8', 0),
+            '#options' => $testArray,
+            '#required' => true,
+        );
+        $form['status_widget']['status_widget_update1'] = array(
+            '#type' => 'text_format',
+            '#title' => t('Update #1'),
+            '#default_value' => variable_get('status_widget_update1'),
+            '#format' => 'full_html_wysiwyg',
+            //'#required' => TRUE,
+            //'#disabled' => FALSE,
+        );
+        $form['status_widget']['status_widget_update2'] = array(
+            '#type' => 'text_format',
+            '#title' => t('Update #2'),
+            '#default_value' => variable_get('status_widget_update2'),
+            '#format' => 'full_html_wysiwyg',
+        );
+        $form['status_widget']['status_widget_update3'] = array(
+            '#type' => 'text_format',
+            '#title' => t('Update #3'),
+            '#default_value' => variable_get('status_widget_update3'),
+            '#format' => 'full_html_wysiwyg',
+        );
+        $form['status_widget']['status_widget_update4'] = array(
+            '#type' => 'text_format',
+            '#title' => t('Update #4'),
+            '#default_value' => variable_get('status_widget_update4'),
+            '#format' => 'full_html_wysiwyg',
+        );
+        $form['status_widget']['status_widget_update5'] = array(
+            '#type' => 'text_format',
+            '#title' => t('Update #5'),
+            '#default_value' => variable_get('status_widget_update5'),
+            '#format' => 'full_html_wysiwyg',
+        );
+        $form['status_widget']['status_widget_update6'] = array(
+            '#type' => 'text_format',
+            '#title' => t('Update #6'),
+            '#default_value' => variable_get('status_widget_update6'),
+            '#format' => 'full_html_wysiwyg',
+        );
+        $form['submit'] = array(
+            '#type' => 'submit',
+            '#value' => t('Submit'),
+        );
+    }
+
+    return $form;
+}
+
+/**
+ *    Implements hook_block_save().
+ *    Save all our variables from the form.
+ */
+function status_widget_block_save($delta = '', $edit = array())
+{
+    if ($delta == 'status_widget') {
+
+        //echo '<pre>' . print_r($edit, true) . '</pre>';
+        //die();
+        variable_set('status_widget_radio1', $edit['status_widget_radio1']);
+        variable_set('status_widget_radio2', $edit['status_widget_radio2']);
+        variable_set('status_widget_radio3', $edit['status_widget_radio3']);
+        variable_set('status_widget_radio4', $edit['status_widget_radio4']);
+        variable_set('status_widget_radio5', $edit['status_widget_radio5']);
+        variable_set('status_widget_radio6', $edit['status_widget_radio6']);
+        variable_set('status_widget_radio7', $edit['status_widget_radio7']);
+        variable_set('status_widget_radio8', $edit['status_widget_radio8']);
+        variable_set('status_widget_update1', $edit['status_widget_update1']['value']);
+        variable_set('status_widget_update2', $edit['status_widget_update2']['value']);
+        variable_set('status_widget_update3', $edit['status_widget_update3']['value']);
+        variable_set('status_widget_update4', $edit['status_widget_update4']['value']);
+        variable_set('status_widget_update5', $edit['status_widget_update5']['value']);
+        variable_set('status_widget_update6', $edit['status_widget_update6']['value']);
+    }
+}
+
+/**
+ *    Implements hook_block_view().
+ *    Render View
+ */
+function status_widget_block_view($delta = '')
+{
+
+    $result = db_query("SELECT * FROM " . STATUS_WIDGET_HISTORY_TABLE . " ORDER BY date DESC LIMIT 4 OFFSET 1");
+
+    $statuses = array();
+    foreach ($result as $record) {
+        $record->data = (array)json_decode($record->data);
+        $record->data = array_values($record->data);
+        $statuses[] = (array)$record;
+    }
+
+    //echo '<pre>' . print_r($statuses, true) . '</pre>';
+
+    $statusElements = array(
+        'System Access',
+        'Reservationist Booking',
+        'Online Booking',
+        'Credit Card Processing',
+        'Notifications',
+        'Reporting',
+        'APIs',
+        'Support Phones'
+    );
+
+    $block = array();
+    $imgArray = array(
+        // array holds the classes for the 3 system status buttons with codes 0, 1, 2 for 'OK', 'Issue' or 'Offline' respectively.
+        0 => '<div class="sbtn ok">&nbsp;</div>',
+        1 => '<div class="sbtn issue">&nbsp;</div>',
+        2 => '<div class="sbtn offline">&nbsp;</div>',
+    );
+
+    $curDate = date('Y:m:d H:i:s');
+
+    $header = '<h2>All systems normal.</h2><h3>As of ' . date('h:i A l, F j, Y', strtotime($curDate)) . '</h3>';
+
+    $month = t(date('F'));
+    $dayNum = date('j');
+    $year = date('Y');
+    $date_output = t(
+        '@month @dayNum, @year',
+        array(
+            '@month' => $month,
+            '@dayNum' => $dayNum,
+            '@year' => $year
+        )
+    );
+
+    switch ($delta) {
+        case 'status_widget':
+            $block['subject'] = t($header);
+
+            // get the output of all the variables in the form.
+            $radio1 = variable_get('status_widget_radio1');
+            $radio2 = variable_get('status_widget_radio2');
+            $radio3 = variable_get('status_widget_radio3');
+            $radio4 = variable_get('status_widget_radio4');
+            $radio5 = variable_get('status_widget_radio5');
+            $radio6 = variable_get('status_widget_radio6');
+            $radio7 = variable_get('status_widget_radio7');
+            $radio8 = variable_get('status_widget_radio8');
+            $status1 = variable_get('status_widget_update1');
+            $status2 = variable_get('status_widget_update2');
+            $status3 = variable_get('status_widget_update3');
+            $status4 = variable_get('status_widget_update4');
+            $status5 = variable_get('status_widget_update5');
+            $status6 = variable_get('status_widget_update6');
+
+
+            $html = "<div class='col-sm-10'>";
+            $html .= "<div class='legend clearfix'>";
+            $html .= "<div class='sbtn ok col-sm-2'>&nbsp;</div><div class='lbl'>System Available</div>";
+            $html .= "<div class='sbtn issue col-sm-2'>&nbsp;</div><div class='lbl'>Performance Issues</div>";
+            $html .= "<div class='sbtn offline col-sm-2'>&nbsp;</div><div class='lbl'>Service Disruption</div>";
+            $html .= "</div>";
+            $html .= "</div>";
+
+            // renders on the page the results from the admin form.
+            // There is probably a better way to do this than hard code all the html, maybe templates???
+
+            //echo '<pre>' . print_r($statuses, true) . '</pre>';
+
+            $html .= "<table class='status-table'>";
+
+            $html .= "<tr><td>&nbsp;</td><td>" . date('M d') . "</td><td>" . date(
+                    'M d',
+                    strtotime($statuses[0]['date'])
+                ) . "</td><td>" . date('M d', strtotime($statuses[1]['date'])) . "</td><td>" . date(
+                    'M d',
+                    strtotime($statuses[2]['date'])
+                ) . "</td><td>" . date('M d', strtotime($statuses[3]['date'])) . "</td></tr>";
+
+            //var_dump ($statuses[0]->data);
+            //echo '<pre>' . print_r($statuses, true) . '</pre>';
+            //die('dsfs');
+
+            for ($i = 1; $i <= 8; $i++) {
+                $html .= "<tr><td>" . $statusElements[$i - 1] . "</td>";
+                $html .= "<td>" . $imgArray[${'radio' . $i}] . "</td>";
+                for ($j = 0; $j <= 3; $j++) {
+                    //var_dump($statuses[intval($j)]['data']);
+                    $index = $statuses[(string)($j)]['data'][(string)$i - 1];
+
+                    //echo '<pre>' . print_r($statuses[$j], true) . '</pre>';
+                    //echo $j . ' - ' . $i . '<br/>';
+                    //echo $index . '<br/>';
+                    $html .= "<td>" . $imgArray[$index] . "</td>";
+                }
+                $html .= "</tr>";
+            }
+            /*<td>" . $imgArray[$statuses[$i-1]->data[$i]] . "</td><td>" . date('M d', strtotime($statuses[0]->date)) . "</td><td>" . date('M d', strtotime($statuses[1]->date)) . "</td><td>" . date('M d', strtotime($statuses[2]->date)) . "</td><td>" . date('M d', strtotime($statuses[3]->date)) . "</td></tr>";*/
+
+
+            $html .= "<tr class='bottom-text'>";
+            $html .= "<td colspan='6'>*Booker's system status will be updated within 15 minutes of an issue.</td>";
+            $html .= "</tr>";
+
+            $html .= "</table>";
+
+
+            $html .= "<div class='bottom-statuses'>";
+            /*$html .=  $imgArray[$radio1] . "<div class='lbl'>System Access <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='Booker login page to access your account and manage your operations.' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio2]. "<div class='lbl'>Reservationist Booking <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='Features your employees use to book and manage appointments. ' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio3]. "<div class='lbl'>Online Booking <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='Website your customers use to book appointments and buy products online.' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio4]. "<div class='lbl'>Credit Card Processing <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='Point of sale processing for customer transactions. ' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio5]. "<div class='lbl'>Notifications <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='Email and SMS notifications for customers and staff.' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio6]. "<div class='lbl'>Reporting <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='Detailed reports like sales and payroll, accessible from your Booker account.' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio7]. "<div class='lbl'>APIs <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='200+ API's, accessed by Booker partners' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+            $html .= $imgArray[$radio8]. "<div class='lbl'>Support Phones <img src='/sites/booker/themes/booker/images/system-status/question-icon-v4.png' title='The Booker support line' width='20' height='18' scale='0'/></div>";
+            $html .= "<div class='clearfix'></div>";
+
+              $html .= "</div>";
+              $html .= "<div class='bottom'></div>";
+            $html .= "</div>";
+            $html .= "</div>";
+
+            $html .= "<div class='col-sm-10'>";
+            $html .= "<div class='legend'>";
+            $html .= "<p class='note'></p>";
+            $html .= "<div class='statkeybox'>";
+            $html .= "<div class='top'></div>";
+            $html .= "<div class='middle'>";
+              $html .= "<div class='sbtn ok'>OK</div><div class='lbl'>System Available</div>";
+              $html .= "<div class='sbtn issue'>Issue</div><div class='lbl'>Performance Issues</div>";
+            $html .= "<div class='sbtn offline'>Offline</div><div class='lbl'>Service Disruption</div>";
+            $html .= "<div class='clear'><br />*Booker's system status will be updated within 15 minutes of an issue.</div>";
+            $html .= "</div>";*/
+            $html .= "<p class='note'></p>" . $status1 . "</p>";
+            $html .= "<p class='note'></p>" . $status2 . "</p>";
+            $html .= "<p class='note'></p>" . $status3 . "</p>";
+            $html .= "<p class='note'></p>" . $status4 . "</p>";
+            $html .= "<p class='note'></p>" . $status5 . "</p>";
+            $html .= "<p class='note'></p>" . $status6 . "</p>";
+            $html .= "<p class='footnote'>";
+            $html .= "<br/>";
+            $html .= "</p>";
+            $html .= "</div>";
+            $html .= "
+	<script>
+	</script>";
+            $block['content'] = $html;
+    }
+
+    return $block;
+}
+
+function status_widget_cron()
+{
+    $data = array();
+
+    for ($i = 1; $i <= 8; $i++) {
+        $data[$i] = variable_get('status_widget_radio' . $i);
+    }
+
+    db_merge(STATUS_WIDGET_HISTORY_TABLE)
+        ->key(array('date' => date('Y-m-d')))
+        ->fields(
+            array(
+                'data' => json_encode($data),
+                'date' => date('Y-m-d')
+            )
+        )
+        ->execute();
+
+    for ($i = 1; $i <= 8; $i++) {
+        $data[$i] = intval(variable_get('status_widget_radio' . $i));
+    }
+}

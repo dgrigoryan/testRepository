@@ -1,0 +1,84 @@
+<?php
+
+/**
+ * Implements hook_enable().
+ */
+function booker_tpl_manager_enable() {
+    variable_set('booker_tpl_manager_prefix', 'page___');
+    _booker_tpl_manager_set_list();
+}
+
+/**
+ *
+ */
+function booker_tpl_manager_uninstall() {
+    variable_del('booker_tpl_manager_list_json');
+    variable_del('booker_tpl_manager_prefix');
+    drupal_uninstall_schema( 'tpl_manager' );
+}
+
+/**
+ *
+ */
+function booker_tpl_manager_install() {
+    drupal_install_schema('tpl_manager_relations');
+    drupal_install_schema('tpl_manager_defaults');
+}
+
+/**
+ * Implementation hook_schema()
+ */
+function booker_tpl_manager_schema(){
+    $schema['tpl_manager_relations'] = array(
+        'description' => 'Template manager table of node relations',
+        'fields' => array(
+            'nid' => array(
+                'description' => 'Node Id',
+                'type' => 'int',
+                'size' => 'medium',
+                'unsigned' => TRUE,
+                'not null' => TRUE,
+            ),
+            'tpl_name' => array(
+                'description' => 'Template name',
+                'type' => 'varchar',
+                'length' => '64',
+                'not null' => TRUE,
+            ),
+            'use_parent_tpl' => array(
+                'description' => 'Use parent tpl option',
+                'type' => 'int',
+                'size' => 'tiny',
+                'length' => '1',
+                'not null' => TRUE,
+            ),
+        ),
+        'unique keys' => array(
+            'nid' => array('nid'),
+        ),
+        'primary key' => array( 'nid' ),
+    );
+    $schema['tpl_manager_defaults'] = array(
+        'description' => 'Template manager table of a node type default values',
+        'fields' => array(
+            'type' => array(
+                'description' => 'Content type',
+                'type' => 'varchar',
+                'length' => '32',
+                'not null' => TRUE,
+            ),
+            'tpl_name' => array(
+                'description' => 'Template name',
+                'type' => 'varchar',
+                'length' => '64',
+                'not null' => TRUE,
+            ),
+        ),
+        'unique keys' => array(
+            'type' => array('type'),
+        ),
+        'primary key' => array('type'),
+    );
+
+    return $schema;
+}

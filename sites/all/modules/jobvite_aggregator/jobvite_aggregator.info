@@ -1,0 +1,7 @@
+name = Greenhouse aggregator
+description = "Provides functionality for one way synchronisation with Greenhouse"
+package = Services
+dependencies[] = pathauto
+version = "7.x-0.6"
+core = 7.x
+configure = admin/config/development/greenhouse-aggregator

@@ -1,0 +1,300 @@
+<?php
+define('TPL_MAN_TABLE_REL', 'tpl_manager_relations');
+define('TPL_MAN_TABLE_DEF', 'tpl_manager_defaults');
+/**
+ * Implementation of the hook_help
+ */
+function booker_tpl_manager_help($path, $arg){
+    switch ($path) {
+        case 'admin/help#booker_tpl_manager':
+            $output = '';
+            $output .= '<h2>'.t('About module').'</h2>';
+            $output .= '<p>'.t("The module was developed for overriding Drupal templates for a node page (if default Drupal suggestions do not match requirements).").'<p>';
+            $output .= '<p>'.t('The module extends functionality of Add/Edit node pages and Add/Edit content type pages.').'</p>';
+            $output .= '<p>'.t('The module <strong>templates\' list</strong> could be <strong>updated/refreshed</strong> via the module settings page or by <em>Clear Caches</em> on the Perfomance page.').'</p>';
+            return $output;
+    }
+}
+
+/**
+ * Implementation of the hook_menu
+ */
+function booker_tpl_manager_menu() {
+    $items['admin/config/development/tpl-manager'] = array(
+        'title' => 'Template Manager Settings',
+        'description' => 'Edit custom templates appearance.',
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('booker_tpl_manager_settings'),
+        'access arguments' => array('administer site configuration'),
+        'file' => 'booker_tpl_manager.admin.inc',
+        'weight' => 1,
+    );
+    return $items;
+}
+
+/**
+ * Implements hook_field_form_alter().
+ */
+function booker_tpl_manager_form_alter(&$form, &$form_state, $form_id) {
+    if (!empty($form['tpl_manager'])) {
+        return;
+    }
+
+    $defaultTxt = t('Drupal default');
+    foreach (element_children($form) as $key) {
+        if(isset($form[$key]['#type']) && $form[$key]['#type'] == 'vertical_tabs' && 'node_type_form' == $form_id){
+            $ntype = $form['type']['#default_value'];
+            $nodeTpl = _booker_tpl_manager_get_tpl('conten-type', $ntype);
+            $existingTemplate = $nodeTpl->tpl_name;
+            $availableTemplateList = _booker_tpl_manager_get_tpl_list();
+            array_unshift($availableTemplateList, $defaultTxt);
+            $defaultValue = (!empty($existingTemplate)) ? $existingTemplate : $defaultTxt;
+
+            $form['additional_settings']['tpl_manager'] = array(
+                '#type' => 'fieldset',
+                '#title' => t('Template manager'),
+                '#collapsible' => TRUE,
+                '#collapsed' => TRUE,
+                '#access' => user_access('administer site configuration'),
+                '#weight' => 30,
+                '#attributes' => array('class' => array('tpl_manager_tab')),
+                '#group' => 'additional_settings'
+            );
+            $form['additional_settings']['tpl_manager']['#attached']['js'] = array(
+                'vertical-tabs' => drupal_get_path('module', 'booker_tpl_manager') . '/booker_tpl_manager_content_type.js'
+            );
+            $form['additional_settings']['tpl_manager']['tpl'] = array(
+                '#title' => t('Page template'),
+                '#type' => 'select',
+                '#description' => t('Set this to <em>@default</em> if You would like to use Drupal default templates suggestions.', array('@default' => $defaultTxt)),
+                '#key_type' => 'associative',
+                '#multiple_toggle' => '1',
+                '#options' => $availableTemplateList,
+                '#default_value' => $defaultValue,
+                '#weight' => '1',
+            );
+            $form['#submit'][] = '_booker_tpl_manager_save_content_type_settings';
+        }
+        if (isset($form[$key]['#type']) && $form[$key]['#type'] == 'vertical_tabs' && strrpos($form_id, '_node_form')) {
+            $nid = intval($form['nid']['#value']);
+            $nodeTpl = _booker_tpl_manager_get_tpl('node', $nid);
+            if (!empty($nodeTpl)) {
+                $existingTemplate = $nodeTpl->tpl_name;
+                $useParentTpl = $nodeTpl->use_parent_tpl;
+            } else {
+                $useParentTpl = 1;
+            }
+
+            $availableTemplateList = _booker_tpl_manager_get_tpl_list();
+            array_unshift($availableTemplateList, $defaultTxt);
+            $defaultValue = (!empty($existingTemplate)) ? $existingTemplate : $defaultTxt;
+
+            $form['additional_settings']['tpl_manager'] = array(
+                '#type' => 'fieldset',
+                '#title' => t('Template manager'),
+                '#collapsible' => TRUE,
+                '#collapsed' => TRUE,
+                '#access' => user_access('administer site configuration'),
+                '#weight' => 30,
+                '#attributes' => array('class' => array('tpl_manager_tab')),
+                '#group' => 'additional_settings'
+            );
+            $form['additional_settings']['tpl_manager']['settings'] = array(
+                '#type' => 'container'
+            );
+            $form['additional_settings']['tpl_manager']['settings']['#states']['enabled']['input[name="parent_tpl"]'] = array('checked' => TRUE);
+            $form['additional_settings']['tpl_manager']['parent_tpl'] = array(
+                '#title' => t('Use content type default'),
+                '#type' => 'checkbox',
+                '#description' => t('Check this to override content-type defaults.'),
+                '#default_value' => $useParentTpl,
+                '#weight' => '0',
+            );
+            $form['additional_settings']['tpl_manager']['initial'] = array(
+                '#type' => 'hidden',
+                '#default_value' => empty($nodeTpl) ? '1' : '0',
+                '#weight' => '0',
+            );
+            $form['additional_settings']['tpl_manager']['#attached']['js'] = array(
+                'vertical-tabs' => drupal_get_path('module', 'booker_tpl_manager') . '/booker_tpl_manager.js'
+            );
+            $form['additional_settings']['tpl_manager']['settings']['tpl'] = array(
+                '#title' => t('Page template'),
+                '#type' => 'select',
+                '#description' => t('Set this to <em>@default</em> if You would like to use Drupal default templates suggestions.', array('@default' => $defaultTxt)),
+                '#key_type' => 'associative',
+                '#multiple_toggle' => '1',
+                '#options' => $availableTemplateList,
+                '#default_value' => $defaultValue,
+                '#weight' => '1',
+            );
+            $form['actions']['submit']['#submit'][] = '_booker_tpl_manager_save_template_settings';
+        }
+    }
+}
+
+/**
+ * Templates getter
+ */
+function _booker_tpl_manager_get_tpl($mode, $val, $all = false) {
+    $output = false;
+
+    if($mode == 'content-type'){
+        if($all === true) {
+            $output = db_select(TPL_MAN_TABLE_DEF, 'tp')
+                ->fields('tp')
+                ->execute()
+                ->fetchAllKeyed();
+        } else {
+            $result = db_select(TPL_MAN_TABLE_DEF, 'tp')
+                ->condition('tp.type', $val, '=')
+                ->fields('tp')
+                ->execute();
+            foreach ($result as $record) {
+                $output = $record;
+            }
+        }
+    } elseif ($mode == 'node') {
+        if($all === true) {
+            $output = db_select(TPL_MAN_TABLE_REL, 'tp')
+                ->fields('tp')
+                ->execute()
+                ->fetchAllKeyed();
+        } else {
+            $result = db_select(TPL_MAN_TABLE_REL, 'tp')
+                ->condition('tp.nid', $val, '=')
+                ->fields('tp')
+                ->execute();        
+            foreach ($result as $record) {
+                $output = $record;
+                break;
+            }
+        }
+    }
+    return $output;
+}
+
+/**
+ * Templates setter
+ */
+function _booker_tpl_manager_set_tpl($mode, $val, $tplName = null, $parentTpl = null) {
+
+    if ($mode == 'node') {
+        db_merge(TPL_MAN_TABLE_REL)
+            ->key(array('nid' => $val))
+            ->fields(array(
+                    'nid' => $val,
+                    'tpl_name' => $tplName,
+                    'use_parent_tpl' => $parentTpl,
+                ))
+            ->execute();
+    } elseif ($mode == 'content-type') {
+        db_merge(TPL_MAN_TABLE_DEF)
+            ->key(array('type' => $val))
+            ->fields(array(
+                    'type' => $val,
+                    'tpl_name' => $tplName,
+                ))
+            ->execute();
+    }
+}
+
+/**
+ * Implementation of hook_node_delete().
+ */
+function booker_tpl_manager_node_delete($node) {
+    db_delete(TPL_MAN_TABLE_REL)->condition('nid', $node->nid)->execute();
+}
+
+/**
+ * Implementation of hook_node_type_delete().
+ */
+function booker_tpl_manager_node_type_delete($info) {
+    db_delete(TPL_MAN_TABLE_DEF)->condition('type', $info->type)->execute();
+}
+
+/**
+ * Implementation of saving template settings for each node.
+ */
+function _booker_tpl_manager_save_template_settings ($form, $form_state) {
+
+    if ($form_state['values']['initial'] == '0' || ($form_state['values']['initial'] == '1' && $form_state['values']['parent_tpl'] == '0')) {
+        _booker_tpl_manager_set_tpl('node', intval($form_state['values']['nid']), $form_state['values']['tpl'], $form_state['values']['parent_tpl']);
+    }
+}
+
+/**
+ * Implementation of saving template settings for each content type.
+ */
+function _booker_tpl_manager_save_content_type_settings ($form, $form_state) {
+    _booker_tpl_manager_set_tpl('content-type', $form_state['values']['type'], $form_state['values']['tpl']);
+}
+
+/**
+ * Implementation of hook_flush_caches.
+ */
+function booker_tpl_manager_flush_caches() {
+    _booker_tpl_manager_set_list();
+}
+
+/**
+ * Implementation of tpl list collector.
+*/
+function _booker_tpl_manager_get_tpl_list() {
+    $cache = theme_get_registry();
+    $extension = '.tpl.php';
+    $tplPrefix = variable_get('booker_tpl_manager_prefix');
+    $searchPath = drupal_get_path('theme', variable_get('theme_default', NULL)).'/templates';
+    $tplList = drupal_find_theme_templates($cache, $extension, $searchPath);
+    $output = array();
+    foreach ($tplList as $key => $value) {
+        if (strpos($key, $tplPrefix) === 0) {
+            $output[$key] = $key;
+        }
+    }
+    return $output;
+}
+/*
+* Implements encoding and setting the tpl list.
+*/
+function _booker_tpl_manager_set_list() {
+    variable_set('booker_tpl_manager_list_json', json_encode(_booker_tpl_manager_get_tpl_list()));
+}
+/*
+* Implements decoding and getting the tpl list.
+*/
+function _booker_tpl_manager_get_list() {
+    return json_decode(variable_get('booker_tpl_manager_list_json'));
+}
+/*
+* Implements hook_preprocess.
+*/
+function booker_tpl_manager_preprocess(&$variables, $hook) {
+    switch ($hook) {
+        case 'page':
+            if (!empty($variables['node'])) {
+                $tpl = _booker_tpl_manager_get_tpl('node', intval($variables['node']->nid));
+
+                if (!empty($tpl)) {
+                    if (intval($tpl->use_parent_tpl)) {
+                    $tpl = _booker_tpl_manager_get_tpl('content-type', $variables['node']->type);
+                    $tplName = $tpl->tpl_name;
+                } else {
+                        $tplName = $tpl->tpl_name;
+                    }
+
+                    if (!empty($tplName)) {
+                        $variables['theme_hook_suggestions'][] = $tplName;
+                    }
+                }
+
+            }
+            break;
+        
+        default:
+            # code...
+            break;
+    }
+
+
+}

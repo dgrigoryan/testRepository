@@ -1,0 +1,5 @@
+name = Booker Template Manager
+description = "Provides functionality to change template for the current node page."
+package = Templates
+core = 7.x
+configure = admin/config/development/tpl-manager

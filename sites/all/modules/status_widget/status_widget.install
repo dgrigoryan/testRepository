@@ -1,0 +1,49 @@
+<?php
+
+/**
+ *
+ */
+function status_widget_uninstall() {
+    drupal_uninstall_schema( 'tpl_manager' );
+}
+
+/**
+ *
+ */
+function status_widget_install() {
+    drupal_install_schema('status_widget_history');
+}
+
+/**
+ * Implementation hook_schema()
+ */
+function status_widget_schema(){
+    $schema['status_widget_history'] = array(
+        'description' => 'Status history table',
+        'fields' => array(
+            'id' => array(
+                'description' => t('an unique identifier'),
+                'type' => 'serial',
+                'not null' => true,
+            ),
+            'data' => array(
+                'description' => 'status data',
+                'type' => 'varchar',
+                'length' => '255',
+                'not null' => TRUE,
+            ),
+            'date' => array(
+                'description' => 'day',
+                'type' => 'datetime',
+                'mysql_type' => 'date',
+                'not null' => TRUE,
+            ),
+        ),
+        'unique keys' => array(
+            'id' => array('id'),
+        ),
+        'primary key' => array( 'id' ),
+    );
+
+    return $schema;
+}

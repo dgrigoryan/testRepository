@@ -1,0 +1,5 @@
+name = Status Widget
+description = Booker Status Updates Widget
+core = 7.x
+files[] = status_widget.module
+files[] = status_widget.test

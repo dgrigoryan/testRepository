@@ -1,0 +1,636 @@
+<?php
+define('JOBVITE_TABLE_NODE','jobvite_req_node');
+define('JOBVITE_CONTYPE', 'jobvite_requisition');
+
+/**
+ *   Implements hook_menu.
+ */
+function jobvite_aggregator_menu() {
+    $items['admin/config/development/greenhouse-aggregator'] = array(
+        'title' => t('Greenhouse'),
+        'description' => t('Manage all requisitions from Greenhouse'),
+        'access arguments' => array('administer site configuration'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('jobvite_aggregator_main_page_form'),
+    );
+    $items['admin/config/development/greenhouse-aggregator/settings'] = array(
+        'title' => t('Settings'),
+        'access arguments' => array('administer site configuration'),
+        'type' => MENU_DEFAULT_LOCAL_TASK,
+    );
+    $items['admin/config/development/greenhouse-aggregator/update'] = array(
+        'title' => t('Update'),
+        'access arguments' => array('administer site configuration'),
+        'page callback' => 'drupal_get_form',
+        'page arguments' => array('jobvite_aggregator_update_page_form'),
+        'type' => MENU_LOCAL_TASK,
+    );
+    $items['admin/config/development/greenhouse-aggregator/update/sync'] = array(
+        'title' => 'Greenhouse Synchronization',
+        'page callback' => '_jobvite_aggregator_sync_init',
+        'access arguments' => array('administer site configuration'),
+    );
+
+    return $items;
+}
+
+/**
+* Implements hook_block_info.
+*/
+function jobvite_aggregator_block_info() {
+    $blocks['jobvite_aggregator_block'] = array(
+        'info' => t('Jobvite requisitions inner page'),
+        'cache' => DRUPAL_CACHE_PER_ROLE,
+    );
+    $blocks['jobvite_aggregator_all_block'] = array(
+        'info' => t('Jobvite requisitions main'),
+        'cache' => DRUPAL_CACHE_PER_ROLE,
+    );
+    return $blocks;
+}
+
+/**
+* Implements hook_block_view.
+*/
+function jobvite_aggregator_block_view($delta = '') {
+    $block = array();
+    switch($delta){
+        case 'jobvite_aggregator_block':
+            $block['subject'] = '<none>';
+            $block['content'] = theme('jobvite_aggregator_block_view', array('requisitions' => _jobvite_aggregator_get_sort_reqs()));
+            break;
+        case 'jobvite_aggregator_all_block':
+            $block['subject'] = '<none>';
+            $block['content'] = theme('jobvite_aggregator_all_block_view', array('requisitions' => _jobvite_aggregator_get_sort_reqs('3cols')));
+            break;
+        default:
+            break;
+    }
+    return $block;
+}
+
+/**
+* Implements hook_theme.
+*/
+function jobvite_aggregator_theme($existing, $type, $theme, $path){
+    $tplPath = drupal_get_path('module', 'jobvite_aggregator').'/templates';
+    return array(
+        'jobvite_aggregator_block_view' => array(
+            'path' => $tplPath,
+            'template' => 'jobvite_aggregator_block',
+            'variables' => array(
+                'requisitions' => NULL,
+            ),
+        ),
+        'jobvite_aggregator_all_block_view' => array(
+            'path' => $tplPath,
+            'template' => 'jobvite_aggregator_all_block',
+            'variables' => array(
+                'requisitions' => NULL,
+            ),
+        ),
+    );
+}
+
+/**
+ * Implements the module main form.
+ */
+function jobvite_aggregator_main_page_form() {
+    /*$form['path_setting'] = array(
+        '#type' => 'container'
+    );*/
+    /*$form['path_setting']['path'] = array(
+        '#type' => 'textfield',
+        '#title' => t('URL path prefix'),
+        '#description' => t('Define the string prefix for the jobvite node URLs. <strong>No <em>slash</em> at the beginning and at the ending</strong>.'),
+        '#default_value' => variable_get('jobvite_alias_pref', ''),
+        '#required' => False,
+    );*/
+    /*$form['server'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Jobvite credentials'),
+        '#description' => t('This section sets up the connection with the !link', array('!link' => '<a href="http://jobvite.com" title="'.t('Jobvite').'">'.t('Jobvite').'</a>')),
+        '#collapsible' => TRUE, 
+        '#collapsed' => FALSE,
+    );*/
+    $form['server']['company_id'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Company ID'),
+        '#description' => t('Input <em>Company ID</em> provided by !link', array('!link' => 'Greenhouse')),
+        '#default_value' => variable_get('jobvite_company_id', ''),
+        '#required' => TRUE,
+    );
+    /*$form['server']['api'] = array(
+        '#type' => 'textfield',
+        '#title' => t('API key'),
+        '#description' => t('Input <em>API key</em> provided by !link', array('!link' => '<a href="http://jobvite.com" title="'.t('Jobvite').'">'.t('Jobvite').'</a>')),
+        '#default_value' => variable_get('jobvite_api',''),
+        '#required' => TRUE,
+    );
+    $form['server']['secret'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Secret key'),
+        '#description' => t('Input <em>Secret key</em> provided by !link', array('!link' => '<a href="http://jobvite.com" title="'.t('Jobvite').'">'.t('Jobvite').'</a>')),
+        '#default_value' => variable_get('jobvite_secret',''),
+        '#required' => TRUE,
+    );*/
+    $form['#submit'][] = '_jobvite_aggregator_main_page_def_submit';
+
+    return system_settings_form($form);
+}
+
+
+/**
+* Implements main_page default submit function.
+*/
+function _jobvite_aggregator_main_page_def_submit(&$form, &$form_state) {
+    //variable_set('jobvite_alias_pref', $form_state['values']['path']);
+    variable_set('jobvite_company_id', $form_state['values']['company_id']);
+    //variable_set('jobvite_api', $form_state['values']['api']);
+    //variable_set('jobvite_secret', $form_state['values']['secret']);
+}
+
+/**
+* Implements hook_form.
+*/
+function jobvite_aggregator_update_page_form() {
+    $form['#action'] = url('admin/config/development/greenhouse-aggregator/update/sync');
+    $form['sync_container'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Feed update'),
+        '#description' => t('To update the <em>Requisitions</em> press <strong>sync</strong> button.<br />Each existing <em>Requisition</em> will be updated.'),
+        '#collapsible' => TRUE, 
+        '#collapsed' => FALSE,
+    );
+    $form['sync_container']['sync_button'] = array(
+        '#type' => 'submit',
+        '#value' => t('Synchronize'),
+    );
+    return $form;
+}
+
+/**
+ * Implements main page form submition.
+ */
+function _jobvite_aggregator_update_page_submit(&$form, &$form_state) {
+
+}
+
+/**
+ * Implementation of Requisition content type creation.
+ */
+function _jobvite_aggregator_update_content_type() {
+    $contentTypeName = 'Greenhouse Requisition';
+    $jvContentType = node_type_load(JOBVITE_CONTYPE);
+
+    if (!$jvContentType) {
+        $contentTypeConfig = array(
+            'type' => JOBVITE_CONTYPE,
+            'name' => $contentTypeName,
+            'base' => 'node_content',
+            'description' => t('Greenhouse Requisition content Type'),
+            'custom' => TRUE,
+            'modified' => TRUE,
+            'locked' => FALSE,
+            'comment' => 0
+        );
+        $jvContentType = node_type_set_defaults($contentTypeConfig);
+        node_type_save($jvContentType);
+
+        variable_set('comment_' . JOBVITE_CONTYPE, COMMENT_NODE_CLOSED);
+    }
+
+    $fields = _jobvite_aggregator_get_synchronization_fields();
+    foreach ($fields as $field) {
+        $fieldName = strtolower('jv_' . $field['name']);
+        $instance = field_info_instance('node', $fieldName, $jvContentType->type);
+        if (!$field['excluded'] && is_null($instance)) {
+            _jobvite_aggregator_create_field($fieldName, $field['name'], $field['type'], $field['widget'], $jvContentType->type);
+        }
+
+    }
+}
+
+/**
+ * Implementation of getting the entire list of fields to synchronize.
+ */
+function _jobvite_aggregator_get_synchronization_fields() {
+    return array(
+        array(
+            'name' => 'title',
+            'excluded' => true,
+            'type' => 'text',
+            'widget'=> 'text_textfield',
+        ),
+        array(
+            'name' => 'briefDescription',
+            'excluded' => true,
+            'type' => 'text_long',
+            'widget' => 'text_textarea',
+        ),
+        array(
+            'name' => 'location',
+            'excluded' => false,
+            'type' => 'text',
+            'widget' => 'text_textfield',
+        ),
+        array(
+            'name' => 'description',
+            'excluded' => false,
+            'type' => 'text_long',
+            'widget' => 'text_textarea',
+        ),
+        array(
+            'name' => 'id',
+            'excluded' => false,
+            'type' => 'text',
+            'widget'=> 'text_textfield',
+        ),
+        array(
+            'name' => 'approveDate',
+            'excluded' => true,
+            'type' => 'text',
+            'widget'=> 'text_textfield',
+        ),
+        array(
+            'name' => 'category',
+            'excluded' => false,
+            'type' => 'text',
+            'widget'=> 'text_textfield',
+        ),
+        array(
+            'name' => 'applyUrl',
+            'excluded' => false,
+            'type' => 'text',
+            'widget'=> 'text_textfield',
+        ),
+    );
+}
+
+/**
+ * Implementation of field creation
+ */
+function _jobvite_aggregator_create_field($title, $label, $type, $widget, $contentType) {
+
+    $fieldConfig = array(
+        'field_name' => $title,
+        'type' => $type,
+        'cardinality' => 1
+    );
+
+    field_create_field($fieldConfig);
+
+    $instance = array(
+        'field_name' => $title,
+        'entity_type' => 'node',
+        'bundle' => $contentType,
+        'widget' => array(
+            'type' => $widget,
+            'weight' => -1,
+        ),
+        'settings' => array(
+            'text_processing' => 1
+        ),
+        'label' => $label,
+    );
+
+    field_create_instance($instance);
+}
+
+/**
+ *  Implementation of data getting
+ */
+function _jobvite_aggregator_get_data () {
+    //Global $base_path, $base_root;
+
+    $companyId = variable_get('jobvite_company_id');
+    $apiKey = variable_get('jobvite_api');
+    $secret = variable_get('jobvite_secret');
+
+    $greenHouseApiFeed = "https://api.greenhouse.io/v1/boards/$companyId/embed/jobs";
+
+    //$data = file_get_contents($base_root.$base_path.drupal_get_path('module', 'jobvite_aggregator').'/jsonFeed.txt');
+    $arrayData = json_decode(file_get_contents($greenHouseApiFeed));
+    //$fields = _jobvite_aggregator_get_synchronization_fields();
+    $result = false;
+
+    if (!empty($arrayData->jobs)) {
+        $result = array();
+        foreach($arrayData->jobs as $job) {
+            $row = array();
+
+            $jobApiFeed = "https://api.greenhouse.io/v1/boards/booker/embed/job?id={$job->id}";
+            $jobInfo = json_decode(file_get_contents($jobApiFeed));
+
+            if(!empty($jobInfo)) {
+                $row['id'] = $jobInfo->id;
+                $row['title'] = $jobInfo->title;
+                $row['description'] = htmlspecialchars_decode($jobInfo->content);
+                $row['location'] = $jobInfo->location->name;
+                $row['category'] = $jobInfo->departments[0]->name;
+                $row['applyUrl'] = $jobInfo->absolute_url;
+            }
+            $result[] = $row;
+        }
+    }
+
+    return $result;
+}
+
+/**
+ * Implements base function to launch the batch.
+ */
+function _jobvite_aggregator_sync_init() {
+    $rel_data = _jobvite_aggregator_get_relations();
+    $rel_data['real'] = array();
+    $data = _jobvite_aggregator_get_data();
+
+    if($data) {
+
+        $iterationsCount = count($data);
+
+        $batch = array(
+            'title' => t('Importing Content ...'),
+            'operations' => array(),
+            'init_message' => t('Commencing'),
+            'progress_message' => t('Processed @current out of @total.'),
+            'error_message' => t('An error occurred during processing'),
+            'finished' => '_jobvite_aggregator_sync_finished',
+            'progressive' => FALSE
+        );
+        
+        foreach ($data as $jobInstance) {
+            $batch['operations'][] = array('_jobvite_aggregator_sync_worker', array($jobInstance, $rel_data, $iterationsCount));
+            if (!empty($rel_data[$jobInstance['id']])) {
+                $rel_data['real'][] = $jobInstance['id'];
+            }
+        }
+
+        foreach ($rel_data as $key => $nid) {
+            if ($key != 'real' && !in_array($key, $rel_data['real'])) {
+                $batch['operations'][] = array('_jobvite_aggregator_del_worker', array($nid));
+            }
+        }
+        
+        batch_set($batch);
+
+        batch_process('admin/config/development/greenhouse-aggregator/update');
+    } else {
+        drupal_set_message('An error occurred while accessing the data. Please check your API settings.', $type = 'error');
+    }
+}
+
+/**
+* Implements an delete operation function for the batch.
+*/
+function _jobvite_aggregator_del_worker($nid, &$context) {
+    _jobvite_aggregator_del_relation($nid);
+    node_delete($nid);
+    $context['results']['deleted'][] = t('Deleted node - !nid', array('!nid' => $nid));
+    $context['finished'] = 1;
+}
+
+/**
+ * Implements an operation function for the batch.
+ */
+function _jobvite_aggregator_sync_worker($jobInstance, $rel_data, $iterationsCount, &$context) {
+    if (!isset($context['sandbox']['progress'])) {
+        $context['sandbox']['progress'] = 0;
+        $context['sandbox']['max'] = $iterationsCount;
+    }
+
+    if (!empty($rel_data) && $rel_data[$jobInstance['id']]) {
+        // Correct existing node
+        _jobvite_aggregator_set_node($jobInstance, $rel_data[$jobInstance['id']]);
+        $context['results']['updated'][] = t('Processed node - !id', array('!id' => $jobInstance['id']));
+    } else {
+        // Add new node
+        _jobvite_aggregator_set_node($jobInstance);
+        $context['results']['created'][] = t('Processed node - !id', array('!id' => $jobInstance['id']));
+    }
+
+    $context['finished'] = 1;
+}
+
+/**
+ * Implements function for batch finish callback.
+ */
+function _jobvite_aggregator_sync_finished($success, $results, $operations) {
+    if ($success) {
+        $numDel = $numCr = $numUp = 0;
+        if (!empty($results['deleted'])) {
+            $numDel = count($results['deleted']);    
+        }
+        if (!empty($results['updated'])) {
+            $numUp = count($results['updated']);    
+        }
+        if (!empty($results['created'])) {
+            $numCr = count($results['created']);    
+        }
+        
+        $message = t('!results <em>Requisitions</em> were processed (<em>imported/updated/deleted</em>).<br />', array('!results' => $numCr + $numUp + $numDel));
+        if ($numCr > 0) {
+            $message .= t('!number <em>Requisitions</em> were created.<br />', array('!number' => $numCr));
+        }
+        if ($numUp > 0) {
+            $message .= t('!number <em>Requisitions</em> were updated.<br />', array('!number' => $numUp));
+        }
+        if ($numDel > 0) {
+            $message .= t('!number <em>Requisitions</em> were deleted.<br />', array('!number' => $numDel));
+        }
+        drupal_set_message($message);
+    }
+    else {
+        $error_operation = reset($operations);
+        $message = t('An error occurred while processing %error_operation with arguments: @arguments', array('%error_operation' => $error_operation[0], '@arguments' => print_r($error_operation[1], TRUE)));
+        drupal_set_message($message, 'error');
+    }
+}
+
+/**
+* Implements function for getting all relationships from DB.
+*/
+function _jobvite_aggregator_get_relations() {
+    $output = array();
+    $query = db_select(JOBVITE_TABLE_NODE, 'jtn')
+        ->fields('jtn')
+        ->execute();
+    foreach ($query as $value) {
+        $output[$value->jvid] = $value->nid;
+    }
+    
+    return $output;
+}
+
+/**
+* Implements function for setting a relationship into DB.
+*/
+function _jobvite_aggregator_set_relation($jvid = null, $nid = null) {
+    if (empty($jvid) || empty($nid)) {
+        return;
+    }
+    db_insert(JOBVITE_TABLE_NODE)
+        ->fields(array(
+            'jvid' => $jvid,
+            'nid' => $nid
+        ))
+        ->execute();
+}
+
+/**
+* Implements function for deletion of a relationship from DB.
+*/
+function _jobvite_aggregator_del_relation($nid = null) {
+    if (empty($nid)) {
+        return;
+    }
+    db_delete(JOBVITE_TABLE_NODE)
+        ->condition('nid', $nid)
+        ->execute();
+}
+
+/**
+* Implements function for a node creation.
+*/
+function _jobvite_aggregator_set_node($entity = null, $nid = null) {
+    if (empty($entity)) {
+        return;
+    }
+
+    if (empty($nid)) {
+        $node = new stdClass();
+        $node->type = JOBVITE_CONTYPE;
+        node_object_prepare($node);
+        $node->promote = 0;
+    } else {
+        $node = node_load($nid);
+    }
+
+    $node->title = $entity['title'];
+    $node->language = LANGUAGE_NONE;
+
+    $fields = _jobvite_aggregator_get_synchronization_fields();
+
+    foreach ($fields as $field) {
+        if (!$field['excluded']) {
+            $value = $entity[$field['name']];
+
+            $value = ($field['name'] == 'category') ? str_replace('/', ' or ', $value) : $value;
+            $value = ($field['name'] == 'category') ? str_replace('&', 'and', $value) : $value;
+
+            $field['name'] = 'jv_'.strtolower($field['name']);
+
+            switch ($field['widget']) {
+                case 'text_textarea':
+                    $node->$field['name'] = array(
+                        $node->language => array(
+                            0 => array(
+                                'value' => $value,
+                                'summary' => '',
+                                'format' => 'full_html',
+                            ),
+                        ),
+                    );        
+                    break;
+                
+                default:
+                    $node->$field['name'] = array($node->language => array(0 => array('value' => $value)));
+                    break;
+            }
+        }
+    }
+
+    if (!empty($nid)) {
+        $node->nid = $nid;
+    }
+    if (module_exists('pathauto')) {
+        module_load_include('inc', 'pathauto', 'pathauto');
+        $urlTitle = pathauto_cleanstring($node->title);
+    } else {
+        $urlTitle = $node->title;
+    }
+    
+    //$path = variable_get('jobvite_alias_pref').'/'.$urlTitle;
+    //$node->path = array('alias' => $path, 'pathauto' => 0);
+    
+    node_save($node);
+
+    if (empty($nid)) {
+        _jobvite_aggregator_set_relation($node->jv_id[$node->language][0]['value'], $node->nid);
+    }
+}
+
+/**
+* Implements hook_node_delete.
+*/
+function jobvite_aggregator_node_delete($node) {
+    if ($node->type == JOBVITE_CONTYPE) {
+        _jobvite_aggregator_del_relation($node->nid);
+    }
+}
+
+/**
+* Implements function for getting all requisitions sorted (leveled) by category.
+* Use '3cols' param for the columned layout.
+*/
+function _jobvite_aggregator_get_sort_reqs($param = '') {
+    $query = db_select('node', 'n');
+    $query->join('jobvite_req_node', 'rel', 'n.nid = rel.nid');
+    $query->join('field_data_jv_category', 'cat', 'cat.entity_id = n.nid');
+    $query->fields('n', array('nid', 'title'))
+        ->fields('rel', array('jvid'))
+        ->fields('cat', array('jv_category_value'))
+        ->orderBy('cat.jv_category_value', 'desc');
+
+
+    //$query->addExpression('COUNT(n.nid)', 'ncount');
+    //$query->havingCondition('ncount', 2);
+
+    //$query->orderBy('ncount', 'desc');
+    $query = $query->execute();
+
+    $output = array();
+
+    foreach ($query as $value) {
+        if (empty($output[$value->jv_category_value])) {
+            $output[$value->jv_category_value] = array();    
+        }
+        $output[$value->jv_category_value][] = array(
+            'nid' => $value->nid,
+            'title' => $value->title,
+        );
+    }
+
+    switch ($param) {
+        case '3cols':
+            $catCount = count($output);
+            if (!empty($catCount)) {
+                $minCatPerRole = floor($catCount / 3);
+                $extraCats = $catCount % 3;
+                $newOutput = array(0 => array(), 1 => array(), 2 => array());
+                $count = 0;
+                $index = 0;
+                foreach ($output as $cat => $value) {
+                    $newOutput[$index][$cat] = $value;
+                    if (($extraCats == 1 && $index == 0 && $count == $minCatPerRole)
+                     || ($extraCats == 2 && $index == 0 && $count == $minCatPerRole)
+                     || ($extraCats == 2 && $index == 1 && $count == $minCatPerRole + 1)
+                     || ($extraCats == 1 && $count == $minCatPerRole)
+                     || ($extraCats == 0 && $index == 0 && $count == $minCatPerRole - 2)
+                     || ($extraCats == 0 && $index == 1 && $count == $minCatPerRole)
+                     || ($extraCats == 0 && $index == 2 && $count == $minCatPerRole)
+                     || ($minCatPerRole == 0)) {
+                        $index++;
+                        $count = 0;
+                    }
+                    $count++;
+                }
+                $output = $newOutput;
+            }
+            break;
+        default:
+            break;
+    }
+    
+    return $output;
+}
