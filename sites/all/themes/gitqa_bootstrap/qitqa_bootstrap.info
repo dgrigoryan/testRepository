@@ -23,16 +23,16 @@ regions[page_bottom]    = 'Page bottom'
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Stylesheets
 ;;;;;;;;;;;;;;;;;;;;;
-
+stylesheets[all][] = bootstrap/dist/css/bootstrap.css
 stylesheets[all][] = css/style.css
-stylesheets[all][] = less/mail.less
+stylesheets[all][] = less/main.less
 
 
 ;;;;;;;;;;;;;;;;;;;;;
 ;; Scripts
 ;;;;;;;;;;;;;;;;;;;;;
 
-scripts[] = 'bootstrap/js/affix.js'
+scripts[] = '../bootstrap/js/affix.js'
 scripts[] = 'bootstrap/js/alert.js'
 scripts[] = 'bootstrap/js/button.js'
 scripts[] = 'bootstrap/js/carousel.js'
